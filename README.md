@@ -1,3 +1,4 @@
+Module for creating and managing loops in roblox
 # Looper
 
 The module allows you to run loops at specified intervals and provides functionality for managing, cancelling, and removing loops dynamically.
