@@ -1,0 +1,96 @@
+local RunService = game:GetService("RunService")
+
+-- < Utility Functions > --
+
+local function InvalidBinding(binding)
+	warn(string.format("Invalid binding '%s'. Expected 'Stepped', 'Heartbeat', or a custom task type.", tostring(binding)))
+end
+
+local function GenerateGUID()
+	return tostring(math.random(100000, 999999)) .. tostring(tick())
+end
+
+-- < Looper Implementation > --
+
+local LoopModule = {}
+LoopModule.Loops = {}
+
+function LoopModule:Initiate(binding)
+	if not self.Loops[binding] then
+		self.Loops[binding] = {}
+	end
+end
+
+function LoopModule:AddLoop(binding, interval, func, ...)
+	if not self.Loops[binding] then
+		InvalidBinding(binding)
+		return
+	end
+
+	local taskID = GenerateGUID()
+	table.insert(self.Loops[binding], {
+		TaskID = taskID,
+		Interval = interval or 0,
+		Func = func,
+		Args = {...},
+		LastExecution = 0
+	})
+
+	return taskID
+end
+
+function LoopModule:CancelTask(taskID)
+	for binding, loopTable in pairs(self.Loops) do
+		for i, loop in ipairs(loopTable) do
+			if loop.TaskID == taskID then
+				table.remove(loopTable, i)
+				return
+			end
+		end
+	end
+end
+
+function LoopModule:ExecuteLoops(binding, deltaTime)
+	local loopTable = self.Loops[binding]
+	if not loopTable then return end
+
+	local currentTime = tick()
+
+	for i = #loopTable, 1, -1 do
+		local loop = loopTable[i]
+		local timeElapsed = currentTime - loop.LastExecution
+
+		if timeElapsed >= loop.Interval then
+			local funcTask = coroutine.create(loop.Func)
+			local success, result = coroutine.resume(funcTask, deltaTime + timeElapsed, unpack(loop.Args))
+
+			if success then
+				if result == "Cancel" then
+					table.remove(loopTable, i)
+				end
+			else
+				warn("[ExecuteLoops]: Error executing function:", result)
+			end
+
+			loop.LastExecution = currentTime
+		end
+	end
+end
+
+function LoopModule:ConnectBinds()
+	RunService.Stepped:Connect(function(_, deltaTime)
+		self:ExecuteLoops("Stepped", deltaTime)
+	end)
+
+	RunService.Heartbeat:Connect(function(deltaTime)
+		self:ExecuteLoops("Heartbeat", deltaTime)
+	end)
+end
+
+for _, Method in {'Stepped', 'Heartbeat'} do
+	LoopModule:Initiate(Method)
+end
+
+LoopModule:ConnectBinds()
+
+return LoopModule
